@@ -20,7 +20,7 @@ contracts:
 	uv run lint-imports
 
 test:
-	uv run pytest -q
+	uv run pytest -q --cov --cov-report=term
 
 audit:
 	uv run pip-audit --skip-editable

@@ -119,11 +119,19 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 - Explanation renderer: trace → plain-language "why" (NF-09, AI-08 without LLM).
 
 **Gate**
-- [ ] `domain/rules` at **100% branch coverage**.
-- [ ] Hypothesis properties: landed cost never negative; ranking is stable and total; changing a non-price field never changes the price component; feedback never contains another supplier's name or the ceiling.
-- [ ] **Q-03:** 20 hand-worked landed-cost cases (written by someone other than the implementer) all match to the paisa.
-- [ ] **AT-04** passes as a unit-level scenario.
-- [ ] Table-driven test: every illegal transition and every forbidden action in the purchase state machine is rejected.
+- [x] `domain/rules` at **100% branch coverage**. *(19 Nov: 100% across all of `handel/domain`; enforced in CI by `fail_under = 100`.)*
+- [x] Hypothesis properties: landed cost never negative; ranking is stable and total; changing a non-price field never changes the price component; feedback never contains another supplier's name or the ceiling. *(Also: components always add up to the total; longer credit never costs more.)*
+- [ ] **Q-03:** 20 hand-worked landed-cost cases (written by someone other than the implementer) all match to the paisa. *(19 Nov: engine matches all 20 cases in `tests/data/q03_landed_cost_cases.json`, but the cases were written by the implementer. Open until a teammate re-derives each one and fills `verified_by`.)*
+- [x] **AT-04** passes as a unit-level scenario.
+- [x] Table-driven test: every illegal transition and every forbidden action in the purchase state machine is rejected.
+
+**Assumptions made in P1** (not stated in the spec; documented in code, revisit with real quotes):
+- GST is applied to `base + charges`; GST on separately hired transport is not modelled yet.
+- A quote without a quantity is costed for the need's quantity; missing payment terms are costed as payment on delivery. Both are labelled *assumed*.
+- Missing rate, rate unit, freight terms, piece weight (per-piece rates) or ex-yard freight make a quote *not costable*: the application must ask the sender (MSG-04), never guess.
+- The 0.5% tie band is anchored on the cheapest quote in the band, so chains of near-ties never merge quotes more than 0.5% apart.
+- The bidding guard blocks any message containing a number equal to another supplier's rate or the ceiling, even by coincidence (fails safe).
+- Business hours default to Mon–Sat 09:30–18:30 IST; holidays aren't modelled.
 
 **Out of scope:** rate builder and costing rules (P6), pool split and referral match (P6/P8).
 

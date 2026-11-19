@@ -1,0 +1,138 @@
+{
+  "about": "Q-03 landed-cost correctness: 20 hand-worked cases (spec §14). Amounts in rupees per kg. Rounding: each component rounded once to the paisa, half away from zero; effective = sum of rounded components.",
+  "status": "DRAFT: written by the implementer. The P1 gate needs a teammate to re-derive every 'expected' value by hand, then fill 'verified_by' and 'verified_on'.",
+  "verified_by": null,
+  "verified_on": null,
+  "defaults": {
+    "today": "2026-12-01",
+    "needed_by": "2026-12-10",
+    "need_qty_kg": "2000",
+    "unit": {"itc_eligible": true, "r": "0.015"},
+    "material_standard_gst_pct": "18",
+    "quote": {
+      "quantity_kg": "2000",
+      "gst_pct": "18",
+      "tax_invoice": true,
+      "payment": {"kind": "on_delivery", "days": 0},
+      "delivery_date": "2026-12-08",
+      "valid_until": "2026-12-05"
+    }
+  },
+  "cases": [
+    {"id": "C01", "description": "Delivered per-kg rate, ITC claimed, paid on delivery",
+     "quote": {"rate": "62.00", "rate_unit": "per_kg", "freight_terms": "delivered"},
+     "working": "base 62.00; freight 0; charges 0; tax 0 (ITC); money 0",
+     "expected": {"base": "62.00", "freight": "0.00", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "62.00", "flags": []}},
+
+    {"id": "C02", "description": "As C01, but the unit cannot claim ITC",
+     "unit": {"itc_eligible": false},
+     "quote": {"rate": "62.00", "rate_unit": "per_kg", "freight_terms": "delivered"},
+     "working": "tax = 62.00 × 18% = 11.16",
+     "expected": {"base": "62.00", "freight": "0.00", "charges": "0.00", "tax": "11.16", "money": "0.00", "effective": "73.16", "flags": []}},
+
+    {"id": "C03", "description": "Per-tonne rate, 30 days' credit",
+     "quote": {"rate": "61500", "rate_unit": "per_tonne", "freight_terms": "delivered", "payment": {"kind": "credit", "days": 30}},
+     "working": "base 61500/1000 = 61.50; money = 61.50 × 0.015 × (-30/30) = -0.9225 → -0.92",
+     "expected": {"base": "61.50", "freight": "0.00", "charges": "0.00", "tax": "0.00", "money": "-0.92", "effective": "60.58", "flags": []}},
+
+    {"id": "C04", "description": "Ex-yard with a quoted freight lump sum",
+     "quote": {"rate": "60.00", "rate_unit": "per_kg", "freight_terms": "ex_yard"},
+     "freight_quotes": [{"id": "F1", "amount": "3000"}],
+     "working": "freight = 3000 / 2000 = 1.50",
+     "expected": {"base": "60.00", "freight": "1.50", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "61.50", "flags": []}},
+
+    {"id": "C05", "description": "Ex-yard, no freight quote yet: transporter-book estimate",
+     "quote": {"rate": "60.00", "rate_unit": "per_kg", "freight_terms": "ex_yard"},
+     "freight_estimate_per_kg": "1.80",
+     "working": "freight = estimate 1.80",
+     "expected": {"base": "60.00", "freight": "1.80", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "61.80", "flags": [], "freight_label": "estimated"}},
+
+    {"id": "C06", "description": "15 days' advance payment",
+     "quote": {"rate": "62.00", "rate_unit": "per_kg", "freight_terms": "delivered", "payment": {"kind": "advance", "days": 15}},
+     "working": "money = 62.00 × 0.015 × 15/30 = 0.465 → 0.47",
+     "expected": {"base": "62.00", "freight": "0.00", "charges": "0.00", "tax": "0.00", "money": "0.47", "effective": "62.47", "flags": []}},
+
+    {"id": "C07", "description": "Per-quintal rate",
+     "quote": {"rate": "6150", "rate_unit": "per_quintal", "freight_terms": "delivered"},
+     "working": "base = 6150 / 100 = 61.50",
+     "expected": {"base": "61.50", "freight": "0.00", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "61.50", "flags": []}},
+
+    {"id": "C08", "description": "Per-sheet rate, 8×4 ft × 2 mm sheet (46.674 kg)",
+     "quote": {"rate": "2900", "rate_unit": "per_piece", "piece_weight_kg": "46.674", "freight_terms": "delivered"},
+     "working": "sheet = 2438.4 × 1219.2 × 2 × 7.85 / 10^6 = 46.674 kg; base = 2900 / 46.674 = 62.133 → 62.13",
+     "expected": {"base": "62.13", "freight": "0.00", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "62.13", "flags": []}},
+
+    {"id": "C09", "description": "Loading lump sum plus per-kg unloading",
+     "quote": {"rate": "62.00", "rate_unit": "per_kg", "freight_terms": "delivered",
+               "charges": [{"name": "loading", "amount": "500", "basis": "lump_sum"}, {"name": "unloading", "amount": "0.25", "basis": "per_kg"}]},
+     "working": "charges = 500/2000 + 0.25 = 0.50",
+     "expected": {"base": "62.00", "freight": "0.00", "charges": "0.50", "tax": "0.00", "money": "0.00", "effective": "62.50", "flags": []}},
+
+    {"id": "C10", "description": "Charges are taxed when ITC can't be claimed",
+     "unit": {"itc_eligible": false},
+     "quote": {"rate": "62.00", "rate_unit": "per_kg", "freight_terms": "delivered",
+               "charges": [{"name": "loading", "amount": "500", "basis": "lump_sum"}]},
+     "working": "charges 0.25; tax = (62.00 + 0.25) × 18% = 11.205 → 11.21",
+     "expected": {"base": "62.00", "freight": "0.00", "charges": "0.25", "tax": "11.21", "money": "0.00", "effective": "73.46", "flags": []}},
+
+    {"id": "C11", "description": "GST not stated: standard rate, labelled assumed",
+     "unit": {"itc_eligible": false},
+     "quote": {"rate": "62.00", "rate_unit": "per_kg", "freight_terms": "delivered", "gst_pct": null},
+     "working": "tax = 62.00 × 18% (assumed) = 11.16",
+     "expected": {"base": "62.00", "freight": "0.00", "charges": "0.00", "tax": "11.16", "money": "0.00", "effective": "73.16", "flags": [], "tax_label": "assumed"}},
+
+    {"id": "C12", "description": "No tax invoice, no GST charged",
+     "quote": {"rate": "61.00", "rate_unit": "per_kg", "freight_terms": "delivered", "gst_pct": "0", "tax_invoice": false},
+     "working": "no invoice → no ITC; tax = 61.00 × 0% = 0",
+     "expected": {"base": "61.00", "freight": "0.00", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "61.00", "flags": ["not eligible for input tax credit"]}},
+
+    {"id": "C13", "description": "No tax invoice but GST charged: ITC-eligible unit still pays it",
+     "quote": {"rate": "60.00", "rate_unit": "per_kg", "freight_terms": "delivered", "tax_invoice": false},
+     "working": "no invoice → no ITC; tax = 60.00 × 18% = 10.80",
+     "expected": {"base": "60.00", "freight": "0.00", "charges": "0.00", "tax": "10.80", "money": "0.00", "effective": "70.80", "flags": ["not eligible for input tax credit"]}},
+
+    {"id": "C14", "description": "Ex-yard, 3 t, 45 days' credit at 2%/month",
+     "unit": {"r": "0.02"}, "need_qty_kg": "3000",
+     "quote": {"rate": "59.00", "rate_unit": "per_kg", "freight_terms": "ex_yard", "quantity_kg": "3000", "payment": {"kind": "credit", "days": 45}},
+     "freight_quotes": [{"id": "F1", "amount": "4500"}],
+     "working": "freight = 4500/3000 = 1.50; money = (59.00 + 1.50) × 0.02 × (-45/30) = -1.815 → -1.82",
+     "expected": {"base": "59.00", "freight": "1.50", "charges": "0.00", "tax": "0.00", "money": "-1.82", "effective": "58.68", "flags": []}},
+
+    {"id": "C15", "description": "Two freight quotes: the best one is used",
+     "quote": {"rate": "60.00", "rate_unit": "per_kg", "freight_terms": "ex_yard"},
+     "freight_quotes": [{"id": "F1", "amount": "3200"}, {"id": "F2", "amount": "2800"}],
+     "working": "freight = min(3200, 2800) / 2000 = 1.40",
+     "expected": {"base": "60.00", "freight": "1.40", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "61.40", "flags": []}},
+
+    {"id": "C16", "description": "A quoted freight replaces the estimate",
+     "quote": {"rate": "60.00", "rate_unit": "per_kg", "freight_terms": "ex_yard"},
+     "freight_quotes": [{"id": "F1", "amount": "3000"}], "freight_estimate_per_kg": "1.00",
+     "working": "freight = 3000/2000 = 1.50 (quoted beats estimate 1.00)",
+     "expected": {"base": "60.00", "freight": "1.50", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "61.50", "flags": [], "freight_label": "quoted"}},
+
+    {"id": "C17", "description": "Delivers after the need date",
+     "quote": {"rate": "61.00", "rate_unit": "per_kg", "freight_terms": "delivered", "delivery_date": "2026-12-12"},
+     "working": "12 Dec > needed 10 Dec → late",
+     "expected": {"base": "61.00", "freight": "0.00", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "61.00", "flags": ["late"]}},
+
+    {"id": "C18", "description": "Quote validity has passed",
+     "quote": {"rate": "61.00", "rate_unit": "per_kg", "freight_terms": "delivered", "valid_until": "2026-11-30"},
+     "working": "valid until 30 Nov < today 1 Dec → stale",
+     "expected": {"base": "61.00", "freight": "0.00", "charges": "0.00", "tax": "0.00", "money": "0.00", "effective": "61.00", "flags": ["stale"]}},
+
+    {"id": "C19", "description": "Everything at once: per tonne, ex-yard, lump charges, no ITC, advance",
+     "unit": {"itc_eligible": false}, "need_qty_kg": "1500",
+     "quote": {"rate": "60000", "rate_unit": "per_tonne", "freight_terms": "ex_yard", "quantity_kg": "1500",
+               "payment": {"kind": "advance", "days": 10},
+               "charges": [{"name": "loading", "amount": "300", "basis": "lump_sum"}]},
+     "freight_quotes": [{"id": "F1", "amount": "2500"}],
+     "working": "base 60.00; freight 2500/1500 = 1.6667 → 1.67; charges 300/1500 = 0.20; tax (60.00 + 0.20) × 18% = 10.836 → 10.84; money (60.00 + 1.67 + 0.20) × 0.015 × 10/30 = 0.30935 → 0.31",
+     "expected": {"base": "60.00", "freight": "1.67", "charges": "0.20", "tax": "10.84", "money": "0.31", "effective": "73.02", "flags": []}},
+
+    {"id": "C20", "description": "Quantity and payment terms missing: need quantity and pay-on-delivery assumed",
+     "quote": {"rate": "62.40", "rate_unit": "per_kg", "freight_terms": "delivered", "quantity_kg": null, "payment": null,
+               "charges": [{"name": "loading", "amount": "1000", "basis": "lump_sum"}]},
+     "working": "charges 1000 / 2000 (need quantity, assumed) = 0.50; money 0 (on delivery, assumed)",
+     "expected": {"base": "62.40", "freight": "0.00", "charges": "0.50", "tax": "0.00", "money": "0.00", "effective": "62.90", "flags": [], "money_label": "assumed"}}
+  ]
+}

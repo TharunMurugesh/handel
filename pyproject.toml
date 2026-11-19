@@ -12,6 +12,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.30",
     "asyncpg>=0.29",
     "alembic>=1.13",
+    "tzdata>=2026.6",
 ]
 
 [dependency-groups]
@@ -24,6 +25,7 @@ dev = [
     "mypy>=1.11",
     "import-linter>=2.0",
     "pip-audit>=2.7",
+    "pytest-cov>=7.1.0",
 ]
 
 [build-system]
@@ -40,7 +42,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "ASYNC", "S"]
-ignore = ["S101"]  # assert is fine in tests
+ignore = [
+    "S101",  # assert is fine in tests and for type narrowing
+    "RUF001", "RUF002", "RUF003",  # ×, ₹, π are intentional in formulas and messages
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S"]
@@ -97,3 +102,13 @@ forbidden_modules = [
     "httpx",
     "pydantic_settings",
 ]
+
+# ---------- coverage (architecture §3: domain/rules at 100% branch coverage) ----------
+[tool.coverage.run]
+branch = true
+source = ["handel.domain"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true

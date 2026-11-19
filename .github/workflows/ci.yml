@@ -40,7 +40,7 @@ jobs:
       - name: Architecture contracts (domain stays pure)
         run: uv run lint-imports
       - name: Tests
-        run: uv run pytest -q
+        run: uv run pytest -q --cov --cov-report=term
       - name: Dependency audit
         run: uv run pip-audit --skip-editable
 

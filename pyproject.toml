@@ -1,0 +1,99 @@
+[project]
+name = "handel"
+version = "0.0.1"
+description = "Handel: an agent that buys raw material and costs quotes for small factories (Tech4Bharat 2026, problem 4.1)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "hypothesis>=6.100",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "import-linter>=2.0",
+    "pip-audit>=2.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["handel"]
+
+# ---------- ruff ----------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "ASYNC", "S"]
+ignore = ["S101"]  # assert is fine in tests
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S"]
+
+# ---------- mypy ----------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+packages = ["handel"]
+
+[[tool.mypy.overrides]]
+module = ["handel.interfaces.*", "handel.adapters.*"]
+# Adapters and interfaces wrap untyped third-party code; keep strict on domain/application.
+disallow_untyped_calls = false
+
+# ---------- pytest ----------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs a real Postgres (set HANDEL_TEST_DATABASE_URL)",
+]
+
+# ---------- import-linter (architecture §3) ----------
+[tool.importlinter]
+root_package = "handel"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Hexagonal layers: outer layers may import inner ones, never the reverse"
+type = "layers"
+layers = [
+    "handel.interfaces",
+    "handel.adapters",
+    "handel.application",
+    "handel.ports",
+    "handel.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain is pure: no frameworks, I/O libraries or settings"
+type = "forbidden"
+source_modules = ["handel.domain"]
+forbidden_modules = [
+    "handel.config",
+    "fastapi",
+    "starlette",
+    "uvicorn",
+    "sqlalchemy",
+    "asyncpg",
+    "alembic",
+    "httpx",
+    "pydantic_settings",
+]

@@ -1,0 +1,71 @@
+# Local stack (architecture §11.2): Postgres + MinIO + api + worker.
+# Usage: cp .env.example .env && docker compose up --build
+# Then:  curl localhost:8000/health/ready
+name: handel
+
+x-app: &app
+  build: .
+  env_file:
+    - path: .env
+      required: false  # works on a fresh clone before .env exists
+  environment:
+    HANDEL_DATABASE_URL: postgresql+asyncpg://handel:handel@postgres:5432/handel
+    HANDEL_S3_ENDPOINT_URL: http://minio:9000
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: handel
+      POSTGRES_PASSWORD: handel
+      POSTGRES_DB: handel
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U handel -d handel"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: handel
+      MINIO_ROOT_PASSWORD: handel-local-only
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *app
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn handel.interfaces.http.app:create_app --factory --host 0.0.0.0 --port 8000"
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "handel.interfaces.worker.main"]
+    depends_on:
+      api:
+        condition: service_healthy  # api runs the migrations first
+
+volumes:
+  pgdata:
+  miniodata:

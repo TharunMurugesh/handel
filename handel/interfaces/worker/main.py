@@ -1,6 +1,7 @@
-"""Worker service (architecture §2.2). P0: a heartbeat loop with clean shutdown.
+"""Worker service (architecture §2.2): heartbeat, job runner, outbox dispatcher, timer scheduler.
 
-P2 adds the job claimer, outbox dispatcher and timer scheduler to this loop.
+P3 registers the case handlers and the Telegram/relay channels; until then the runner and
+dispatcher have nothing registered and stay idle, while the scheduler already fires timers.
 """
 
 from __future__ import annotations
@@ -9,11 +10,15 @@ import asyncio
 import contextlib
 import logging
 import signal
+from collections.abc import Mapping
+from datetime import timedelta
 
 from handel import __version__
 from handel.adapters.clock import SystemClock
 from handel.adapters.postgres.db import make_engine, ping
 from handel.config import Settings, get_settings
+from handel.interfaces.worker.loops import Dispatcher, Handler, JobRunner, Scheduler
+from handel.ports.channel import Channel, ChannelKind
 from handel.ports.clock import Clock
 
 log = logging.getLogger("handel.worker")
@@ -25,7 +30,7 @@ async def run(
     clock: Clock | None = None,
     max_beats: int | None = None,
 ) -> int:
-    """Beat until ``stop`` is set (or ``max_beats`` reached). Returns the number of beats."""
+    """Heartbeat until ``stop`` is set (or ``max_beats`` reached). Returns the number of beats."""
     clock = clock or SystemClock()
     engine = make_engine(settings.database_url)
     beats = 0
@@ -49,6 +54,36 @@ async def run(
     return beats
 
 
+async def run_worker(
+    settings: Settings,
+    stop: asyncio.Event,
+    handlers: Mapping[str, Handler],
+    channels: Mapping[ChannelKind, Channel],
+    clock: Clock | None = None,
+    worker_id: str | None = None,
+) -> None:
+    """Run heartbeat + job runner + dispatcher + scheduler until ``stop`` is set."""
+    clock = clock or SystemClock()
+    engine = make_engine(settings.database_url)
+    idle = settings.worker_poll_seconds
+    runner = JobRunner(
+        engine, clock, handlers, timedelta(seconds=settings.job_lease_seconds), worker_id
+    )
+    dispatcher = Dispatcher(
+        engine, clock, channels, timedelta(seconds=settings.outbox_lease_seconds)
+    )
+    scheduler = Scheduler(engine, clock)
+    try:
+        await asyncio.gather(
+            run(settings, stop, clock),
+            runner.run(stop, idle),
+            dispatcher.run(stop, idle),
+            scheduler.run(stop, idle),
+        )
+    finally:
+        await engine.dispose()
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = get_settings()
@@ -59,7 +94,7 @@ def main() -> None:
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
-        await run(settings, stop)
+        await run_worker(settings, stop, handlers={}, channels={})
 
     asyncio.run(_amain())
 

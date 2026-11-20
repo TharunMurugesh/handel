@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     fixtures_dir: Path = Path("tests/fixtures")
 
     worker_heartbeat_seconds: float = 30.0
+    worker_poll_seconds: float = 0.5  # idle wait between queue polls
+    job_lease_seconds: float = 60.0  # a job not finished within this is re-run elsewhere
+    outbox_lease_seconds: float = 30.0
+
+    # Column-level encryption and keyed hashing of phone numbers (architecture §5).
+    phone_encryption_key: SecretStr = SecretStr("")
+    phone_hash_key: SecretStr = SecretStr("")
 
     # Object storage (MinIO locally, Cloudflare R2 in the cloud).
     s3_endpoint_url: str = "http://localhost:9000"
@@ -55,10 +62,12 @@ class Settings(BaseSettings):
     # External services. Empty until the accounts in docs/accounts.md exist.
     telegram_bot_token: SecretStr = SecretStr("")
     telegram_webhook_secret: SecretStr = SecretStr("")
-    groq_api_key: SecretStr = SecretStr("")
-    gemini_api_key: SecretStr = SecretStr("")
-    openrouter_api_key: SecretStr = SecretStr("")
+    anthropic_api_key: SecretStr = SecretStr("")  # Claude API (architecture §7)
     sarvam_api_key: SecretStr = SecretStr("")
+    vobiz_auth_id: SecretStr = SecretStr("")
+    vobiz_auth_token: SecretStr = SecretStr("")
+    vobiz_number: str = ""  # Handel's Indian caller ID, E.164
+    public_base_url: str = ""  # HTTPS base for Vobiz answer/hangup URLs and the WSS media stream
 
 
 @lru_cache

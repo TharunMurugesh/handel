@@ -48,7 +48,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S"]
+"tests/**" = ["S", "E501", "ASYNC221"]  # inline SQL fixtures; subprocess calls in tests
+"migrations/**" = ["S608"]  # static DDL built from constants
 
 # ---------- mypy ----------
 [tool.mypy]

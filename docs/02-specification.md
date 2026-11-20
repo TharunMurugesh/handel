@@ -4,8 +4,8 @@
 |---|---|
 | **Project** | Handel |
 | **Problem statement** | Tech4Bharat 2026 · 4.1 · Agentic AI |
-| **Version** | 0.2.1 |
-| **Date** | 2026-11-19 |
+| **Version** | 0.3 |
+| **Date** | 2026-11-20 |
 | **Implements** | [`01-requirements.md`](01-requirements.md) v0.1.3 |
 | **Evidence** | [`00-desk-research.md`](00-desk-research.md) (field visits not possible; see requirements §12) |
 | **Related** | [`00-field-research-plan.md`](00-field-research-plan.md) (optional validation) · `03-architecture.md` (next) |
@@ -16,6 +16,7 @@
 |---|---|
 | 0.1 | First specification |
 | 0.2 | After review: messaging layer independent of any one app, with Telegram for the prototype and an owner-relay mode; transporter freight quotes; relationship mode; cost-rate builder; capacity referral (M-15); two-sided award confirmation; a signal when every quote is above the market; DPDP compliance; WhatsApp limits recorded; positioning against existing options; quality metrics fixed; R1 scope reduced; assumptions A-12 to A-16; traceability corrected |
+| 0.3 | Phone calls added as a channel (Vobiz): Handel calls suppliers, owners call Handel, Handel calls owners at decision points (§5.6, MSG-17 to MSG-19, AI-10, AT-17 to AT-19). Model and provider choices (Claude API, Sarvam) recorded in `03-architecture.md` v0.2 |
 | 0.2.1 | No field visits: datasets switched to team-made and public test data (T-1 to T-6); metrics that needed field data are marked as pilot-only; default cost-of-money values taken from desk research; R1 covers the 57 Must requirements that can be met |
 
 ---
@@ -104,6 +105,7 @@ Our claim is limited to these differences. We don't claim that no other tool has
 |---|---|---|
 | **Telegram bot** | Prototype and pilot default | A bot **cannot message someone first**. The person must start the bot, which is solved by an invite link (§5.3). Voice, photos, documents, buttons and in-app web pages (Mini Apps) are supported. |
 | **WhatsApp Business** | Pilot channel where field research says suppliers won't use Telegram **[A-12]** | Business-initiated messages need **pre-approved templates**. Free-form messages are allowed only **within 24 hours** of the person's last message. The test number can message only a **small number of verified recipients**. Messages are **charged**. *(Check Meta's current terms before building; record them in `03-architecture.md`.)* |
+| **Phone call** | Voice channel for all three parties: Handel calls suppliers, owners call Handel, Handel calls owners at decision points (§5.6) | Indian calling rules: no cold calls; consent recorded before business talk; calls only during business hours; caller ID must be Handel's own Indian number. A call costs money per minute. |
 | **Owner relay** | Fallback for any supplier, transporter or buyer who joins neither | Handel drafts the message, the owner forwards it from their own phone, and forwards the reply back. Handel parses the forwarded reply exactly like a direct one. |
 
 ### 5.2 Owner
@@ -142,6 +144,24 @@ Our claim is limited to these differences. We don't claim that no other tool has
 - **Operator mode** in the bot, plus a simple web console.
 - Used for: onboarding units, suppliers and transporters; recording consent; entering rate-builder inputs from bills; uploading documents.
 - Everything an operator enters is marked as operator-entered.
+
+### 5.6 Phone calls
+Phone calls are a channel like any other: every call belongs to a case, and its outcome (a quote, a need, an approval) is recorded exactly as a chat message would be. Three flows:
+
+| Flow | Who starts | What happens | Ends with |
+|---|---|---|---|
+| **Supplier RFQ call** | Handel | Handel calls a supplier the owner added. It says who it is and who it acts for, asks consent (MSG-17), reads the request for quotes, collects rate, freight, GST, payment terms, delivery and validity, then **reads the terms back** for the supplier to confirm (MSG-18). | A structured quote (`via = call`) with the call recording and transcript as its source |
+| **Owner calls Handel** | Owner | The owner dials Handel's number and speaks naturally: a new need, a status question, a limit, an approval. Same intents as §5.2. | A case event (new need, answer, approval request) |
+| **Decision call** | Handel | At a decision point (shortlist MSG-09, loss warning MSG-10, expiring quotes) Handel rings the owner, speaks the summary and asks for a decision (MSG-19). | A recorded approval, or "send me the details on Telegram" |
+
+**Rules for calls:**
+- **Disclosure first.** The first sentence of every outgoing call says it is an AI assistant acting for the named unit. A supplier who declines is never called again for that unit and falls back to relay.
+- **Consent before business.** A supplier's consent is asked and recorded at the start of the first call (MSG-17), with the notice version and the call reference. Calls are recorded only after announcing it; if the person says no, the call continues unrecorded.
+- **Who and when.** Handel calls only numbers the owner added to their book, only about an open case, only within business hours, and at most a set number of attempts per case (default 2).
+- **What Handel may say.** Every figure spoken on a call (quantities, dates, prices, rank) comes from the rules engine and passes the same checks as written messages (RULE-B2 to RULE-B4). Handel never speaks the owner's ceiling, another supplier's name or another supplier's price.
+- **Approvals by phone** need the owner's 4-digit PIN on the keypad (set at onboarding), because a caller's number can be faked. Without the PIN, Handel sends the decision to Telegram instead.
+- **Read-back.** Every quote taken on a call is read back and confirmed before it counts. Unclear fields get one question each, as in MSG-04.
+- **Failures.** No answer or a busy line counts as an attempt and follows the M-12 recovery table (reminder, then relay). A dropped call keeps whatever was confirmed and asks the rest in a follow-up message or call.
 
 ## 6. Modules
 
@@ -367,6 +387,7 @@ See [section 5.1](#51-messaging-layer). Requirements:
 - inbound messages are de-duplicated
 - each identity's channel and consent are tracked
 - relay drafts are tagged so forwarded replies can be matched back to their case
+- phone calls: each call is tied to a case and a party; consent, recording status, transcript and outcome are stored with it; outgoing calls respect business hours and the per-case attempt limit (§5.6)
 
 ## 7. Workflows and states
 
@@ -545,6 +566,9 @@ Templates are written in English below and delivered in the recipient's language
 | MSG-13 | Transporter | Freight request | "{Unit} needs {load} moved from {from} to {to} on {date}. Your rate?" |
 | MSG-14 | Owner | Referral offer | "You can't take this job. {n} nearby units can do {operations}. Share the job details (without the buyer's name) with them?" [Yes] [No] |
 | MSG-15 | Other unit's owner | Referral received | "A nearby unit is passing on a job: {spec_summary}. Interested?" [Yes] [No] |
+| MSG-17 | Supplier, **phone call** | Call opening, notice and consent | "Namaste, this is Handel, an AI assistant calling for {Unit}. {Unit} needs a rate for {material}. This call may be recorded to note your quote correctly. Is it OK to continue? You can say no, or say STOP at any time." |
+| MSG-18 | Supplier, **phone call** | Read-back | "Let me confirm: ₹{rate} per {unit}, {freight_terms}, GST {gst}, {payment_terms}, delivery by {date}, valid until {validity}. Is that correct?" |
+| MSG-19 | Owner, **phone call** | Decision call | "Handel here, about your {material} order. {summary}. To approve, enter your PIN. To get details on Telegram, press 2." |
 | MSG-16 | Owner | Above-market signal | "All {n} quotes are {x}% above the {source} reference price ({date}). Ask more suppliers?" [Yes] [No] |
 
 ## 11. AI capabilities
@@ -562,12 +586,14 @@ These are behaviour specifications. Model choices go in the architecture documen
 | AI-07 | Message writer | Intent + facts → message in the recipient's language, within RULE-B2 to RULE-B4 | Fixed template (section 10) |
 | AI-08 | Explainer | Any figure → plain-language "why" | Component table |
 | AI-09 | Bill reader | Photo of a power bill or wage sheet → rate-builder inputs | Operator or owner entry |
+| AI-10 | Live call conversation | Caller's speech (streamed) → next spoken turn + structured fields captured so far, in the caller's language, within the call script | Fixed script question; end the call politely and follow up by message |
 
 **Guardrails, which apply to all AI capabilities:**
 1. **Numbers come from the rules engine.** A model may extract values, but never computes prices, costs or rankings.
 2. **People-only actions** are blocked at the approval gate (M-13). A model cannot bypass it.
 3. **Outbound checks:** every message to a third party is checked against RULE-B2 to RULE-B4 and the consent registry before it is sent.
 4. **Confirmation before commitment:** extracted terms are confirmed by both sides before an award (M-07).
+5. **Spoken output is checked like written output:** on calls, every utterance passes the outbound checks before it is spoken, and any figure must come from the case's rules-engine facts.
 
 ## 12. Non-functional specification
 
@@ -585,6 +611,8 @@ These are behaviour specifications. Model choices go in the architecture documen
 | NFS-10 | Auditability | Every agent action and approval is logged | DT-04 |
 | NFS-11 | Assisted path | Every onboarding and document step can be done by an operator | NF-07 |
 | NFS-12 | Channel independence | Business logic has no channel-specific code. A case can move between Telegram and relay. | NF-10 |
+| NFS-14 | Call responsiveness | Handel starts speaking ≤ 2 s after the caller stops (target, measured on team phones); barge-in stops Handel's speech within 0.5 s | NF-01, NF-08 |
+| NFS-15 | Call conduct | 100% of outgoing calls open with the AI disclosure; 0 calls outside business hours; consent recorded before any business question | DT-01, DT-05 |
 | NFS-13 | Demo reliability | Finale demo runs on the prototype setup with a recorded fallback. Recovery scenarios can be triggered on demand. | HC-04 |
 
 ## 13. Sandbox and disclosure
@@ -596,6 +624,7 @@ Required by HC-06 and DT-03.
 | Messaging | A real Telegram bot. Suppliers and transporters are real phones (team members or pilot participants). WhatsApp adapter only if A-12 requires it. | "Prototype" on the case page |
 | Supplier directory | Owner's book and operator entries are real. Directory data is licensed or labelled mock. | "MOCK" on mock records |
 | Reference prices | Licensed or public source with date, or labelled mock | Source and date on every benchmark |
+| Phone calls | A real Vobiz number calling team phones (and pilot participants who agree). Every call opens with the AI disclosure. | Spoken disclosure; "Prototype" on the case page |
 | Payments | **Not built**, by design (BD-02) | — |
 | Buyer enquiries | Real or anonymised field enquiries | "Sample" where anonymised |
 | Other units (referral, pool) | Pilot units, or team-run demo units labelled as such | "Demo unit" |
@@ -637,6 +666,9 @@ Datasets T-1 to T-6 are defined in [`00-desk-research.md` §11](00-desk-research
 | AT-11 | Given an enquiry needing a machine the unit lacks, then Handel offers a referral, shares only the specification with a matching demo unit, and shares the buyer's identity only after acceptance and buyer consent. | FR-MKT-03, BD-04, RULE-F1 to RULE-F4 |
 | AT-12 | Given a supplier replies DELETE, then their personal data is erased (keeping only anonymised price points), and the request is logged. | DT-05 |
 | AT-13 | Given mock data, then it is labelled MOCK wherever it is shown. | DT-03, HC-06 |
+| AT-17 | Given a supplier not on Telegram, when Handel calls them, then it discloses it is an AI, records consent, collects the quote, reads it back, and the confirmed quote appears in the case with `via = call`. If the supplier says no, nothing more is asked and the supplier falls back to relay. | FR-BUY-02, FR-BUY-03, DT-01 |
+| AT-18 | Given the owner calls Handel's number and speaks a need in mixed language, then the need is confirmed by voice and the case starts as in AT-01. | FR-BUY-01, NF-01, NF-03 |
+| AT-19 | Given a shortlist, when Handel calls the owner, then the owner hears the summary and approves with their PIN; a wrong or missing PIN records no approval and sends the decision to Telegram. | AG-06, BD-02, NF-04 |
 | AT-14 (R2) | Given an ex-yard top quote, then freight requests go to transporters, and the quoted freight replaces the estimate. | FR-BUY-13 |
 | AT-15 (R2) | Given a supplier deal larger than one unit's need, then two owners pool, each approves their own share, and the split follows RULE-P1 to RULE-P3. | FR-BUY-11, FR-POOL-01, FR-POOL-02 |
 | AT-16 (R2) | Given all quotes are 8% above the benchmark, then MSG-16 fires with the benchmark's source and date. | FR-BUY-12 |
@@ -646,11 +678,11 @@ Datasets T-1 to T-6 are defined in [`00-desk-research.md` §11](00-desk-research
 | Release | Contents | Target date |
 |---|---|---|
 | **R0: walking skeleton** | M-16 (Telegram + relay), M-01 (basic), M-02 (text), M-03, M-04 (text), M-05, M-07, M-12 (basic), M-13 (gate, consent) | 1 Dec 2026 |
-| **R1: MVP for submission** | + voice (one Indian language + English), photo quotes, M-06 bidding and relationship mode, rate builder, M-11 costing, M-15 referral (basic), full recovery table, DPDP features, M-14 metrics, operator mode, test datasets T-1 to T-6 with measured results. **All 57 Must requirements that can be met** (FD-01 to FD-04 are declared not met). | Submission deadline (TBA; plan for ~10 Dec) |
+| **R1: MVP for submission** | + voice (one Indian language + English), photo quotes, M-06 bidding and relationship mode, rate builder, M-11 costing, M-15 referral (basic), full recovery table, DPDP features, M-14 metrics, operator mode, test datasets T-1 to T-6 with measured results, **phone calls (§5.6) on team phones: supplier RFQ calls, owner calls Handel, decision calls**. **All 57 Must requirements that can be met** (FD-01 to FD-04 are declared not met). | Submission deadline (TBA; plan for ~10 Dec) |
 | **R2: finale build** | + second Indian language, freight requests, M-08 benchmarks, M-09 deals, M-10 pools (2–3 units), WhatsApp adapter if A-12 requires it, pilot data, AT-01 to AT-16 passing. **All 17 Should requirements.** | 20 Dec 2026 (freeze) |
 | **Add-ons (after R2)** | Price forecasting, supplier scoring, freight optimiser, lender data, buyer discovery, cross-cluster marketplace | Post-finale |
 
-**If time runs short**, cut from R2 in this order: pools, then deals, then the WhatsApp adapter, then the second language. Never cut R1 items.
+**If time runs short**, cut from R2 in this order: pools, then deals, then the WhatsApp adapter, then the second language. Never cut R1 items, with one exception: phone calls meet no requirement on their own (Telegram voice notes already meet NF-01), so they may move to R2, decision calls first, then owner calls, then supplier calls.
 
 ## 17. Assumptions
 
@@ -674,6 +706,8 @@ Status after desk research is in [`00-desk-research.md` §12](00-desk-research.m
 | A-14 | Owners can provide a power bill, wages and a machine list; load factors can be estimated per machine type | Owner Q12, D-6 |
 | A-15 | Owners would refer jobs they can't take to nearby units | Owner Q18, association Q2 |
 | A-16 | Suppliers can invoice pool members separately | Supplier Q8 |
+| A-17 | Suppliers will answer and talk to an AI calling for an owner they know, if it says so up front | Supplier Q5, Q6; pilot calls |
+| A-18 | Calls asking a known supplier for a business quote, with disclosure and consent at the start, are allowed on a regular Indian number (not promotional, so not 140-series). **Must be confirmed with Vobiz before any call to a non-team number.** | Vobiz compliance team; TRAI rules |
 
 ## 18. Traceability
 
@@ -697,8 +731,8 @@ Status after desk research is in [`00-desk-research.md` §12](00-desk-research.m
 | FR-POOL-01, FR-POOL-02 | M-10, §8.6 |
 | AG-01 to AG-07 | M-12, M-13, §7, AT-01 to AT-11 |
 | BD-01 to BD-04 | RULE-B4, RULE-B6, RULE-F1, M-07, M-11, M-13 |
-| NF-01 to NF-09 | §5, §12 |
-| NF-10 | D-02, M-16, NFS-12 |
+| NF-01 to NF-09 | §5 (incl. §5.6 phone calls), §12 |
+| NF-10 | D-02, M-16, NFS-12, §5.6 |
 | DT-01 to DT-05 | M-13, MSG-01, §13, NFS-09, NFS-10 |
 | FD-01 to FD-04 | **Declared not met** (requirements §12). Optional: `00-field-research-plan.md` |
 | FD-05 | `00-desk-research.md` §3, §6, §8 (who gains, from published data) |

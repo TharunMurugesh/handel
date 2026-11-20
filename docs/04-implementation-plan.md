@@ -3,10 +3,12 @@
 | | |
 |---|---|
 | **Problem statement** | Tech4Bharat 2026 · 4.1 · Agentic AI |
-| **Version** | 0.1 |
-| **Date** | 2026-11-19 |
-| **Implements** | [`03-architecture.md`](03-architecture.md) v0.1 · [`02-specification.md`](02-specification.md) v0.2.1 · [`01-requirements.md`](01-requirements.md) v0.1.3 |
+| **Version** | 0.2 |
+| **Date** | 2026-11-20 |
+| **Implements** | [`03-architecture.md`](03-architecture.md) v0.2 · [`02-specification.md`](02-specification.md) v0.3 · [`01-requirements.md`](01-requirements.md) v0.1.3 |
 | **Milestones** | R0 walking skeleton **Tue 1 Dec** · R1 submission **Thu 10 Dec** (deadline TBA) · R2 freeze **Sun 20 Dec** · Finale **Sun 27 Dec** |
+
+| **Change (v0.2)** | Claude API replaces the free-tier LLMs (P3, P4); Sarvam on paid credit; new phase **PC — phone calls (Vobiz)**; accounts and risks updated |
 
 ---
 
@@ -26,8 +28,8 @@ Four tracks, one owner each. Owners review each other's pull requests across tra
 |---|---|---|
 | **A — Core** | `domain/` (model, rules engines, state machines, policy), `application/` use cases | §3, §4.3, §8 |
 | **B — Platform** | Postgres schema, queue/outbox/timers, audit, privacy plumbing, CI, deploy, observability | §4.1, §5, §9, §10, §11, §12.2–12.3 |
-| **C — Channels & UX** | Telegram and relay adapters, message templates, Mini App pages, operator console, demo scripts | §6, spec §5, §10 |
-| **D — AI** | LLM gateway, Sarvam speech, prompts, extraction schemas, test datasets T-1..T-6, eval harness | §7 |
+| **C — Channels & UX** | Telegram, relay and **Vobiz** adapters, message and call-script templates, Mini App pages, operator console, demo scripts | §6, spec §5, §10 |
+| **D — AI** | Claude gateway, Sarvam speech (REST and realtime), **voice pipeline**, prompts, extraction schemas, test datasets T-1..T-6, eval harness | §6.2, §7 |
 
 ## 3. Phases at a glance
 
@@ -47,6 +49,7 @@ gantt
     P5 Bidding, award, recovery     :p5, 2026-12-01, 5d
     P6 Quoting side & referral      :p6, 2026-12-02, 7d
     P7 Privacy, operator, deploy    :p7, 2026-12-04, 6d
+    PC Phone calls (Vobiz)          :pc, 2026-12-02, 9d
     R1 gate / submission            :milestone, 2026-12-10, 0d
     section R2
     P8 Should features              :p8, 2026-12-11, 7d
@@ -64,6 +67,7 @@ gantt
 | P5 | Bidding, two-sided award, full recovery | 1–5 Dec | P3 | R1 | A, C |
 | P6 | Quoting side: rate builder, costing, referral | 2–8 Dec | P1, P4 (vision) | R1 | A, D |
 | P7 | Privacy, operator mode, metrics, cloud deploy | 4–9 Dec | P2, P3 | **R1** | B, C |
+| PC | Phone calls: voice service, three call scripts, guard, PIN | 2–10 Dec (spike from 25 Nov) | P2, P4 (Claude + Sarvam adapters) | R1 (may move to R2) | C, D |
 | P8 | Should features (freight, benchmark, deals, pools, 2nd language) | 11–17 Dec | R1 | R2 | all |
 | P9 | Hardening, replay mode, freeze | 17–20 Dec | P8 | **R2** | all |
 | — | Rehearsal, fallback video, finale | 21–27 Dec | R2 | — | all |
@@ -88,7 +92,7 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 - **Fixture mode** switch for `llm` and `speech` ports (record once, replay in CI). This is used from day one, not only for the demo.
 - GitHub Actions: lint → type-check → import-linter → `pytest` → `pip-audit`.
 - `GET /health` on the API; worker heartbeat log line.
-- **Accounts** (record limits and date checked in `docs/accounts.md`, no secrets): two Telegram bots via BotFather (staging, prod-demo), Groq, Gemini API, OpenRouter, Sarvam (₹100 credit), Neon, Cloudflare R2, Oracle Cloud Always Free, Sentry, Grafana Cloud, Langfuse. Flag any that need a card.
+- **Accounts** (record limits and date checked in `docs/accounts.md`, no secrets): two Telegram bots via BotFather (staging, prod-demo), **Claude API** (team credits), **Sarvam** (team credits; set workspace data retention), **Vobiz** (KYC, a regular Indian number), Neon, Cloudflare R2, Oracle Cloud Always Free (Indian region), Sentry, Grafana Cloud, Langfuse. Flag any that need a card.
 - `.env.example` committed; `.env` git-ignored.
 
 **Gate**
@@ -102,6 +106,7 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 | The **one Indian language** for R1 (spec D-10) | P4 (T-2 recording) | Was to be "chosen by field location"; with no field visits, pick the language the team can speak and label best |
 | Pilot **segment and materials** (OQ-05) | P1 (section-weight tables, T-1 content) | Spec examples assume fabrication / MS sheet |
 | `aiogram 3` vs `python-telegram-bot` | P3 | Pick one; architecture lists both |
+| Confirm with Vobiz that supplier quote calls (regular number, consent at call start) are allowed (spec A-18) | PC calls to anyone outside the team | Ask Vobiz support/compliance in writing |
 
 **Out of scope:** any business logic.
 
@@ -153,13 +158,19 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 - Phone numbers encrypted with `pgcrypto` + keyed hash for lookup.
 
 **Gate**
-- [ ] **Crash test:** kill the worker (SIGKILL) mid-job 50 times in a loop; afterwards every job is done exactly once and no outbox row is sent twice.
-- [ ] Duplicate webhook update → one `inbound_event`.
-- [ ] Fake clock advanced past a timer → event fires once, even with two workers running.
-- [ ] Tampering with one `audit_event` row is detected by the verify command.
-- [ ] A query as unit A cannot read unit B's rows (RLS test).
-- [ ] Dispatcher refuses an RFQ to a supplier without consent.
-- [ ] Migrations upgrade and downgrade cleanly.
+- [x] **Crash test:** kill the worker (SIGKILL) mid-job 50 times in a loop; afterwards every job is done exactly once and no outbox row is sent twice. *(19 Nov, `tests/integration/test_crash.py`: 400 jobs, 2 worker processes, 50 kills all mid-work. Every run: 400/400 effects exactly once, all jobs done, 400/400 messages sent, none lost. Re-sends across 4 runs: 28 → fixed (lease renewal bug) → 0, 0, 1. The one remaining case is unavoidable with Telegram: a kill after the provider accepts a message but before `sent` commits. The test allows at most one re-send per kill.)*
+- [x] Duplicate webhook update → one `inbound_event`.
+- [x] Fake clock advanced past a timer → event fires once, even with two workers running. *(Two schedulers on separate connections, 20 timers → 20 jobs.)*
+- [x] Tampering with one `audit_event` row is detected by the verify command. *(UPDATE/DELETE are blocked by a trigger; with the trigger disabled, edits and deletions are caught by `python -m handel.interfaces.cli audit-verify`.)*
+- [x] A query as unit A cannot read unit B's rows (RLS test). *(Also: can't update or insert B's rows; no unit set → no rows.)*
+- [x] Dispatcher refuses an RFQ to a supplier without consent. *(Refusal is audited; MSG-00/MSG-01 exempt; withdrawn consent stops sending.)*
+- [x] Migrations upgrade and downgrade cleanly.
+
+**Notes from P2**
+- Delivery is at-least-once. Effects are exactly-once (handler writes and `done` share a transaction); outgoing chat messages can repeat only in the narrow crash window above.
+- The per-chat rate limit (≈1 msg/s) is per worker process. Two workers could each send to the same chat in the same second; revisit if Telegram returns 429s.
+- The `handel_app` role is cluster-wide, so migration downgrade leaves it in place.
+- The audit chain is global and serialised by an advisory lock: fine at the expected load (§11.3 of the architecture), a hotspot only far beyond it.
 
 **Out of scope:** real channels; media storage beyond a MinIO smoke test.
 
@@ -175,7 +186,7 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 - **Track C — Templates:** MSG-00, 01, 02, 02R, 03, 06, 07, 08, 09 in English (translation comes in P4). Every page or message showing mock data carries **MOCK / Demo unit / Prototype** labels (DT-03).
 - **Track A — Application use cases:** basic onboarding (M-01: unit, owner, add supplier → invite link, MSG-01 consent), intake (M-02 text), sourcing (M-03: RFQ dispatch, T1/T2/deadline timers), quote ingest (M-04 text), landed cost (M-05), shortlist + approval + MSG-06 award + supplier confirm (M-07), case plan and timeline (M-12 basic).
 - **Track A — Planner v0:** rules-only next-action choice from the state machine's allowed list; policy gate on every action.
-- **Track D — Minimal LLM path:** one provider (Groq) behind `ports/llm.py`, Pydantic schemas for `Need` and `Quote` (text), validate → retry once → ask a person. Every call logged to `model_call`; fixtures recorded for CI.
+- **Track D — Minimal LLM path:** Claude (`claude-opus-5-5`, official `anthropic` SDK) behind `ports/llm.py`, Pydantic schemas for `Need` and `Quote` (text) via structured outputs, validate → retry once → ask a person. Every call logged to `model_call` with tokens and cost; fixtures recorded for CI.
 - Read-only **case page** (Jinja2, no HTMX yet): plan, timeline, landed-cost table with trace.
 
 **Gate**
@@ -192,28 +203,63 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 
 ---
 
-### P4 — Perception: full gateway, voice, photos, evals (30 Nov – 5 Dec) · Track D
+### P4 — Perception: Claude gateway, voice notes, photos, evals (30 Nov – 5 Dec) · Track D
 
-**Goal:** owners and suppliers can use voice and photos in the chosen language mixed with English, and AI quality is **measured**, not claimed.
+**Goal:** owners and suppliers can use voice notes and photos in the chosen language mixed with English, and AI quality is **measured**, not claimed.
 
 **Build**
-- **LLM gateway** (architecture §7.1): task routing with ordered providers (Groq → Gemini Flash-Lite → OpenRouter `:free`), per-provider RPM/RPD counters in Postgres, routing away near cap, response cache on `hash(input, prompt_version)`, Langfuse tracing.
-- **PII redaction** before every text call and restore after (§10.3); images go only to the vision route.
-- **Sarvam** STT (mixed speech), TTS **only at decision points** (MSG-08, 09, 10), translate; TTS cache + pre-rendered fixed phrases; spend counter that disables TTS at ₹80.
-- **Vision extraction** for quote photos (resize/compress first) with per-field confidence and source spans; low confidence → MSG-04 or "send a voice note".
+- **Claude gateway** (architecture §7.1): per-task model, effort and prompt version from configuration; structured outputs with Pydantic schemas; prompt caching on stable prefixes; refusal handling and fallbacks; response cache on `hash(input, prompt_version)`; spend meter and daily caps per task priority; Langfuse tracing.
+- **Data minimisation** for batch extraction (§10.3): placeholders for known names, phone numbers and GSTINs, restored after.
+- **Sarvam REST**: STT for voice notes (`saaras:v4`, `codemix`), TTS for decision prompts (`bulbul:v4-flash`), translate for templates; TTS and translation caches; pre-rendered fixed phrases.
+- **Vision extraction** for quote photos (resize first) with per-field confidence and source spans; low confidence → MSG-04 or "send a voice note".
 - Intent classification for owner speech (spec §5.2 intents).
-- Prompts as files `prompts/<task>/vN.md`; version recorded on every call.
-- **Eval harness** `evals/`: runs tasks on T-1/T-2, writes `evals/results/<date>-<task>-<model>.json`; CI smoke subset (manual trigger).
+- Prompts as files `prompts/<task>/vN.md`; version and effort recorded on every call.
+- **Eval harness** `evals/`: runs tasks on T-1/T-2, writes `evals/results/<date>-<task>-<model>-<effort>.json`; live smoke runs are a manual trigger (they spend credits).
 
 **Gate**
 - [ ] **AT-01** (mixed-language voice need → voice + text confirmation → RFQs).
 - [ ] **AT-03** (text, voice and handwritten-photo quotes → structured quotes with confidence; one uncertain field triggers MSG-04).
-- [ ] Gateway test: primary provider forced to 429 → request served by fallback; all providers down → "ask a person" path.
-- [ ] Redaction test: no phone number, GSTIN or known name appears in any logged outbound text prompt.
-- [ ] **Q-01** measured on T-1, split by typed / printed / handwritten / voice. **Q-02** measured on T-2. Results committed.
-- [ ] Sarvam spend so far recorded; projected total under ₹100.
+- [ ] Gateway tests: Claude 429/5xx → retried with backoff; persistent failure → "ask a person"; refusal → logged and escalated; daily cap reached → low-priority tasks wait.
+- [ ] Minimisation test: no phone number, GSTIN or known name appears in any logged batch-extraction prompt.
+- [ ] Prompt caching works: `cache_read_input_tokens` > 0 on repeated extractions.
+- [ ] **Q-01** measured on T-1, split by typed / printed / handwritten / voice. **Q-02** measured on T-2. Results committed with model and effort.
+- [ ] Spend so far recorded per provider; cost per extraction known.
 
-**Out of scope:** drawings and bills (P6), second language (P8).
+**Out of scope:** drawings and bills (P6), live calls (PC), second language (P8).
+
+---
+
+### PC — Phone calls with Vobiz (spike 25–28 Nov; build 2–10 Dec) · Tracks C, D · R1
+
+**Goal:** Handel can call a supplier and take a quote, an owner can call Handel, and Handel can call the owner for a PIN-protected decision, all on team phones, with every spoken figure checked.
+
+**Spike first (25–28 Nov, half a person):** before building, measure on a real call from the chosen hosting region:
+- end-of-speech → first audio with Sarvam realtime STT + Claude `claude-opus-5-5` (low effort, streamed) + Sarvam streaming TTS;
+- whether `dtmf` events arrive on the Vobiz media stream;
+- cost per call minute from the providers' usage pages.
+If time-to-first-audio misses NFS-14 (≈ 2 s), the team decides between a faster model, fast mode, or shorter turns **before** PC starts; that decision and its numbers are recorded here.
+
+**Build**
+- **Vobiz adapter:** Call API client (`X-Auth-ID`/`X-Auth-Token`), answer-URL XML with `<Stream bidirectional="true">`, `hangup_url` and stream status callbacks with signature checks, recording start/stop, `<Gather>` fallback for PIN digits.
+- **Outbox `call` kind:** the dispatcher places calls with consent rules, business hours, the per-case attempt limit and `time_limit`; a `call_session` row per call.
+- **Voice service** (architecture §6.2): FastAPI WebSocket endpoint with single-use session tokens; Sarvam realtime STT and streaming TTS sockets; sentence streaming; barge-in (`clearAudio` + close TTS); μ-law 8 kHz end to end.
+- **Call scripts** as state machines: supplier RFQ (MSG-17 consent → RFQ → fields → MSG-18 read-back), owner inbound (identify → intent → same flows as chat), decision call (MSG-19 → PIN → approval or "send to Telegram").
+- **Spoken-output guard:** bidding guard + facts allow-list on every sentence; fixed wording on failure.
+- **PIN:** set at onboarding (Telegram or operator), salted hash, 3 tries per case.
+- **Hangup handling:** `inbound_event` (`channel = vobiz`) → case events: quote `via = call`, need, approval, or failed attempt for M-12 recovery.
+- **Call simulator** for CI: replays recorded Vobiz media events and fixture STT/LLM/TTS through the pipeline.
+
+**Gate**
+- [ ] **AT-17** (supplier RFQ call → consent → quote → read-back → quote in case with `via = call`; "no" → relay, never called again for that unit).
+- [ ] **AT-18** (owner calls Handel, speaks a need in mixed language → confirmed by voice → case starts).
+- [ ] **AT-19** (decision call → correct PIN records approval; wrong or no PIN records nothing and sends to Telegram).
+- [ ] Guard test: a scripted LLM reply containing the ceiling, another supplier's name or price, or an unknown number is never spoken (simulator scans the TTS input).
+- [ ] Compliance tests: no call placed outside business hours; every outgoing call's first TTS sentence is the disclosure; no business question before consent is recorded.
+- [ ] Barge-in stops Handel's speech within 0.5 s in the simulator; dropped call keeps confirmed fields.
+- [ ] Measured on team phones: time to first audio p50/p90, read-back acceptance, cost per call minute. Results committed.
+- [ ] Forged callback (bad signature) and reused session token are rejected.
+
+**If PC slips:** move decision calls to R2, then owner calls; supplier RFQ calls are the last to move (spec §16).
 
 ---
 
@@ -266,8 +312,8 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 - **Retention:** raw media deleted after 90 days (scheduled job).
 - **Operator mode** (NF-07): operator role in the bot + small web console for onboarding units/suppliers, recording consent, entering rate-builder inputs from bills; everything marked operator-entered.
 - **M-14 metrics:** time per purchase, suppliers contacted, savings vs first quote, quotes sent/won/lost, enquiry source.
-- **Deploy** (architecture §11): Oracle VM with Docker Compose + Caddy, Neon, R2; Telegram **webhook** with `secret_token`; staging = Neon branch + second bot; GitHub Actions build (ARM + AMD) and SSH deploy; Alembic on deploy. Fallback: Render or laptop + long polling.
-- **Observability:** OpenTelemetry → Grafana Cloud, Sentry, alerts (outbox stuck > 5 min, provider quota > 80%, Sarvam > ₹80).
+- **Deploy** (architecture §11): Oracle VM **in an Indian region** with Docker Compose + Caddy (HTTPS and WSS), `api`, `worker` and `voice` containers, Neon, R2; Telegram **webhook** with `secret_token`; Vobiz answer/hangup URLs pointed at staging; staging = Neon branch + second bot; GitHub Actions build (ARM + AMD) and SSH deploy; Alembic on deploy. Fallback: Render or laptop + long polling.
+- **Observability:** OpenTelemetry → Grafana Cloud, Sentry, alerts (outbox stuck > 5 min, any provider's daily spend > 80% of cap, call time-to-first-audio p90 > 3 s).
 - **Traceability check:** walk all 57 achievable Musts against a test, a demo step or a document section.
 
 **Gate (R1 submission)**
@@ -279,7 +325,7 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 - [ ] Every achievable Must has evidence in the traceability table; FD-01..FD-04 stated as not met.
 - [ ] Eval results for Q-01, Q-02, Q-03, Q-04, Q-05, Q-08 committed with dates and models.
 
-**Demo (R1, ~10 Dec):** recorded full flow on the cloud stack: voice need → RFQs (one relay) → photo quote → bidding round → approval → award; then enquiry → cost sheet → loss warning → approved quote; then referral. This video is the submission video if the format asks for one.
+**Demo (R1, ~10 Dec):** recorded full flow on the cloud stack: voice need → RFQs (one relay, **one supplier reached by phone call**) → photo quote → bidding round → **decision call with PIN** → award; then enquiry → cost sheet → loss warning → approved quote; then referral. This video is the submission video if the format asks for one.
 
 ---
 
@@ -307,10 +353,10 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 **Goal:** the finale demo cannot fail for reasons the team controls.
 
 **Build**
-- **Replay mode** (architecture §12.4 fallback B): the demo script's STT and LLM results replayed from fixtures; on-screen "Replay mode" label.
+- **Replay mode** (architecture §12.4 fallback B): the demo script's STT and LLM results replayed from fixtures; on-screen "Replay mode" label. Live calls can't be replayed: record a clean call for the fallback.
 - **Fallback A:** full stack on a team laptop over a mobile hotspot with long polling — rehearsed, not just documented.
-- Grafana dashboard for the pitch: cases by state, time to shortlist, provider quota headroom, Sarvam spend.
-- Re-check every free-tier limit in `docs/accounts.md`; rotate secrets.
+- Grafana dashboard for the pitch: cases by state, time to shortlist, call outcomes and time to first audio, spend by provider.
+- Re-check every provider limit and remaining credit in `docs/accounts.md`; rotate secrets.
 - Final eval run on all datasets; freeze prompt versions.
 - Bug bash: each track owner runs another track's AT scenarios by hand.
 
@@ -344,9 +390,12 @@ Each phase lists: **Goal**, **Build**, **Gate** (automated), **Demo** (manual), 
 |---|---|---|
 | P1 or P2 slips, blocking R0 | Gate not passed by 27 Nov | Pair a second person onto the slipping track; cut planner LLM calls from P3 (rules-only is enough for R0) |
 | Test data not ready (T-1 ≥ 60, T-2 ≥ 30) | < 50% labelled by 30 Nov | Everyone records 10 voice notes and writes 10 quote slips in one session |
-| Free-tier limits differ from the architecture's figures | P0 account check | Re-plan gateway routing before P4; images are the scarcest resource |
+| Call turns too slow with the chosen model | PC spike misses ≈ 2 s time to first audio | Team decides on model, effort or fast mode before PC build; calls fall back to Telegram voice notes |
+| Vobiz says supplier calls need more (DLT, consent templates) | Answer to the P0 question | Calls only to team phones and consenting pilot participants; relay stays the default for non-Telegram suppliers |
+| Vobiz KYC or number purchase delayed | No number by 1 Dec | Trial number (outbound only) for supplier and decision calls; owner inbound calls wait |
 | Oracle VM unavailable | P0 sign-up fails | Use Render free + long polling fallback from the start of P7 |
-| Sarvam credit spent early | Spend counter > ₹50 before P7 | Freeze TTS to pre-rendered phrases; STT only on demo and eval runs |
+| Credits spent early (Claude, Sarvam, Vobiz) | Daily spend alert, or credit < 30% by 10 Dec | Lower caps; fixtures for all development; live calls only for gate tests and the demo |
+| Track D overloaded (P4 + PC at once) | PC spike slips past 28 Nov | Move the voice pipeline to Track C with D pairing; keep D on extraction and evals |
 | Submission format announced with different needs | Organiser announcement | Re-cut P7 scope; R1 gate items stay |
 
 ## 8. Open items found while writing this plan
